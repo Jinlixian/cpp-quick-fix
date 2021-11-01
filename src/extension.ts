@@ -1,8 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
+import path = require('path');
 import * as vscode from 'vscode';
-import { Uri } from 'vscode';
-import { subscribeToDocumentChanges, EMOJI_MENTION } from './diagnostics';
+import { Position, Range } from 'vscode';
 
 const COMMAND = 'cpp-quick-fix.command';
 
@@ -10,63 +10,133 @@ const COMMAND = 'cpp-quick-fix.command';
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	// context.subscriptions.push(
-	// 	vscode.languages.registerCodeActionsProvider('markdown', new Emojizer(), {
-	// 		providedCodeActionKinds: Emojizer.providedCodeActionKinds
-	// 	}));
-
 	context.subscriptions.push(
 		vscode.languages.registerCodeActionsProvider('cpp', new CppQuickFix(), {
 			providedCodeActionKinds: CppQuickFix.providedCodeActionKinds
 		}));
-
-
-
-	// const emojiDiagnostics = vscode.languages.createDiagnosticCollection("emoji");
-	// context.subscriptions.push(emojiDiagnostics);
-
-	// subscribeToDocumentChanges(context, emojiDiagnostics);
-
-	// // context.subscriptions.push(
-	// // 	vscode.languages.registerCodeActionsProvider('markdown', new Emojinfo(), {
-	// // 		providedCodeActionKinds: Emojinfo.providedCodeActionKinds
-	// // 	})
-	// // );
-
 	context.subscriptions.push(
-		vscode.commands.registerCommand(COMMAND, () => {
-			// TODO 实现把头文件中的funtion移动到cpp文件中的功能
-			// vscode.env.openExternal(vscode.Uri.parse('https://unicode.org/emoji/charts-12.0/full-emoji-list.html'));
-			// vscode.env.appName;
+		vscode.commands.registerCommand(COMMAND, async (document: vscode.TextDocument, range: vscode.Range) => {
 
-			// let uri = Uri.file('/Users/jinlixian');
-			// vscode.commands.executeCommand('vscode.openFolder', uri);
+			if (!vscode.window.activeTextEditor) {
+				return false;
+			}
+			let nowEditor: vscode.TextEditor = vscode.window.activeTextEditor;
 
-			vscode.commands.executeCommand('editor.action.marker.nextInFiles').then(result => {
-				console.log('命令结果', result);
+
+			if (!document.fileName.endsWith('h')) {
+				return false; // 只作用于header文件
+			}
+			// const start = range.start;
+			// const line = document.lineAt(start.line);
+			// if (line.text.endsWith(';')) {
+			// 	return false; // 以;结尾的函数，说明不是在header中实现的，所以不移动
+			// }
+			// if (line.text.endsWith('{')) {
+			// 	return true;
+			// }
+			// if (line.lineNumber + 1 > document.lineCount) {
+			// 	return false;
+			// }
+			// var nextLine = document.lineAt(line.lineNumber + 1);
+			// var nextText = nextLine.text.replace(/(^\s*)|(\s*$)/g, "");// 去首尾空格
+			// while (nextText === '') {
+			// 	nextLine = document.lineAt(nextLine.lineNumber + 1);
+			// 	nextText = nextLine.text.replace(/(^\s*)|(\s*$)/g, "");// 去首尾空格
+			// 	if (nextLine.lineNumber + 1 > document.lineCount) {
+			// 		return false;
+			// 	}
+			// }
+			// if (nextText.startsWith("{")) {
+			// 	return true;
+			// }
+			// return false;
+
+
+			// get function text;
+
+			// let functionText: string = '';
+
+			const startLine = document.lineAt(range.start.line);
+			let functionRange: vscode.Range = startLine.range;
+			{
+				let bracesNumber = 0;
+				var tmpLine = startLine;
+				var tmpStarted = false;
+				while (bracesNumber > 0 || !tmpStarted) {
+					let a = tmpLine.text.split("{").length;
+					let b = tmpLine.text.split("}").length;
+					if (a > 1 || b > 1) {
+						tmpStarted = true;
+					}
+					bracesNumber += a - b;
+					// functionText += tmpLine.text;
+					functionRange = new vscode.Range(functionRange.start.line, functionRange.start.character, tmpLine.range.end.line, tmpLine.range.end.character);
+					tmpLine = document.lineAt(tmpLine.range.start.line + 1);
+				}
+			}
+			let functionText = document.getText(functionRange);
+			// vscode.window.showInformationMessage("functionText" + t);
+
+			// let r = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(nowEditor.document.lineCount + 1, 0));
+
+			// get header text;
+			let headerText = getHeaderString(functionText);
+			if (headerText === '') {
+				vscode.window.showErrorMessage("get header function has error");
+				return false;
+			}
+
+
+
+
+			// get class name
+			let className = getClassName(document, range);
+			if (className === '') {
+				vscode.window.showErrorMessage("get className has error");
+				return false;
+			}
+			// get cpp text;
+			let cppText = getSourceString(functionText, className);
+			if (cppText === '') {
+				vscode.window.showErrorMessage("get source string has error");
+				return false;
+			}
+			vscode.window.showInformationMessage("functionText" + cppText);
+
+			let cppFileName = path.dirname(document.fileName) + '/' + path.basename(document.fileName, ".h") + '.cpp';
+
+			// replace header text;
+
+			nowEditor?.edit(editBuilder => {
+				editBuilder.replace(functionRange, headerText);
 			});
-			vscode.window.showInformationMessage('TODO fix ' + COMMAND + '!');
+
+			// go to cpp 
+
+			const doc: vscode.TextDocument = await vscode.workspace.openTextDocument(cppFileName);
+			if (!vscode.window.activeTextEditor) {
+				return false;
+			}
+			let foundEditor: boolean = false;
+
+			vscode.window.visibleTextEditors.forEach(async (editor, index, array) => {
+				if (editor.document === doc && !foundEditor) {
+					foundEditor = true;
+					nowEditor = await vscode.window.showTextDocument(doc, editor.viewColumn);
+				}
+			});
+			if (!foundEditor) {
+				nowEditor = await vscode.window.showTextDocument(doc);
+			}
+			// add cpp text;
+			nowEditor?.edit(editBuilder => {
+				editBuilder.insert(new vscode.Position(nowEditor.document.lineCount, 0), cppText);
+			});
+
+			return true;
+
 		})
 	);
-
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "cpp-quick-fix" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('cpp-quick-fix.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-
-		vscode.window.showInformationMessage('Hello World from cpp-quick-fix!');
-	});
-
-	context.subscriptions.push(disposable);
-
-
 }
 
 export class CppQuickFix implements vscode.CodeActionProvider {
@@ -77,131 +147,123 @@ export class CppQuickFix implements vscode.CodeActionProvider {
 	];
 
 	provideCodeActions(document: vscode.TextDocument, range: vscode.Range | vscode.Selection, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
-		// throw new Error('Method not implemented.');
-
-		// vscode.commands.getCommands().then(allCommands => {
-		// 	console.log('所有命令：', allCommands);
-		// });
-
-		// let uri = Uri.file('/some/path/to/folder');
-		// commands.executeCommand('vscode.openFolder', uri).then(sucess => {
-		// 	console.log(success);
-		// }
-
 		if (!this.isCppFunctionInH(document, range)) {
 			return;
 		}
-
-		// FIXME get base name
-		const fix = new vscode.CodeAction(`Move Definition to` + document.fileName + `.cpp`, vscode.CodeActionKind.QuickFix);
-		fix.command = { command: COMMAND, title: 'Move definition to cpp' };
-
-		const moveDefinitionToCppfile = fix;
-
-
+		const moveDefinitionAction = this.moveDefinition(document, range);
 		return [
-			moveDefinitionToCppfile
+			moveDefinitionAction
 		];
 	}
 
 
-	// TODO: 判断是不是头文件中的function。
+	// 判断是不是头文件中的function。
 	private isCppFunctionInH(document: vscode.TextDocument, range: vscode.Range) {
-		// const start = range.start;
-		// const line = document.lineAt(start.line);
-		// return line.text[start.character] === ':' && line.text[start.character + 1] === ')';
-		return true;
-	}
-
-	private createFix(document: vscode.TextDocument, range: vscode.Range, emoji: string): vscode.CodeAction {
-		const fix = new vscode.CodeAction(`Convert to ${emoji}`, vscode.CodeActionKind.QuickFix);
-		fix.edit = new vscode.WorkspaceEdit();
-		fix.edit.replace(document.uri, new vscode.Range(range.start, range.start.translate(0, 2)), emoji);
-		return fix;
-	}
-
-	private createCommand(): vscode.CodeAction {
-		const action = new vscode.CodeAction('Learn more...', vscode.CodeActionKind.Empty);
-		action.command = { command: COMMAND, title: 'Learn more about emojis', tooltip: 'This will open the unicode emoji page.' };
-		return action;
-	}
-
-}
-
-export class Emojizer implements vscode.CodeActionProvider {
-
-	public static readonly providedCodeActionKinds = [
-		vscode.CodeActionKind.QuickFix
-	];
-
-	public provideCodeActions(document: vscode.TextDocument, range: vscode.Range): vscode.CodeAction[] | undefined {
-		if (!this.isAtStartOfSmiley(document, range)) {
-			return;
+		if (!document.fileName.endsWith('h')) {
+			return false; // 只作用于header文件
 		}
-
-		const replaceWithSmileyCatFix = this.createFix(document, range, '😺');
-
-		const replaceWithSmileyFix = this.createFix(document, range, '😀');
-		// Marking a single fix as `preferred` means that users can apply it with a
-		// single keyboard shortcut using the `Auto Fix` command.
-		replaceWithSmileyFix.isPreferred = true;
-
-		const replaceWithSmileyHankyFix = this.createFix(document, range, '💩');
-
-		const commandAction = this.createCommand();
-
-		return [
-			replaceWithSmileyCatFix,
-			replaceWithSmileyFix,
-			replaceWithSmileyHankyFix,
-			commandAction
-		];
-	}
-
-	private isAtStartOfSmiley(document: vscode.TextDocument, range: vscode.Range) {
 		const start = range.start;
 		const line = document.lineAt(start.line);
-		return line.text[start.character] === ':' && line.text[start.character + 1] === ')';
+		if (line.text.endsWith(';')) {
+			return false; // 以;结尾的函数，说明不是在header中实现的，所以不移动
+		}
+		if (line.text.endsWith('{')) {
+			return true;
+		}
+		if (line.lineNumber + 1 > document.lineCount) {
+			return false;
+		}
+		var nextLine = document.lineAt(line.lineNumber + 1);
+		var nextText = nextLine.text.replace(/(^\s*)|(\s*$)/g, "");// 去首尾空格
+		while (nextText === '') {
+			nextLine = document.lineAt(nextLine.lineNumber + 1);
+			nextText = nextLine.text.replace(/(^\s*)|(\s*$)/g, "");// 去首尾空格
+			if (nextLine.lineNumber + 1 > document.lineCount) {
+				return false;
+			}
+		}
+		if (nextText.startsWith("{")) {
+			return true;
+		}
+		return false;
 	}
 
-	private createFix(document: vscode.TextDocument, range: vscode.Range, emoji: string): vscode.CodeAction {
-		const fix = new vscode.CodeAction(`Convert to ${emoji}`, vscode.CodeActionKind.QuickFix);
-		fix.edit = new vscode.WorkspaceEdit();
-		fix.edit.replace(document.uri, new vscode.Range(range.start, range.start.translate(0, 2)), emoji);
+	private moveDefinition(document: vscode.TextDocument, range: vscode.Range): vscode.CodeAction {
+		const fix = new vscode.CodeAction(`Move Definition To ` + path.basename(document.fileName, '.h') + `.cpp`, vscode.CodeActionKind.QuickFix);
+		fix.command = { command: COMMAND, title: 'Move Definition', tooltip: 'Move Definition', arguments: [document, range] };
 		return fix;
-	}
-
-	private createCommand(): vscode.CodeAction {
-		const action = new vscode.CodeAction('Learn more...', vscode.CodeActionKind.Empty);
-		action.command = { command: COMMAND, title: 'Learn more about emojis', tooltip: 'This will open the unicode emoji page.' };
-		return action;
-	}
-}
-
-/**
- * Provides code actions corresponding to diagnostic problems.
- */
-export class Emojinfo implements vscode.CodeActionProvider {
-
-	public static readonly providedCodeActionKinds = [
-		vscode.CodeActionKind.QuickFix
-	];
-
-	provideCodeActions(document: vscode.TextDocument, range: vscode.Range | vscode.Selection, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.CodeAction[] {
-		// for each diagnostic entry that has the matching `code`, create a code action command
-		return context.diagnostics
-			.filter(diagnostic => diagnostic.code === EMOJI_MENTION)
-			.map(diagnostic => this.createCommandCodeAction(diagnostic));
-	}
-
-	private createCommandCodeAction(diagnostic: vscode.Diagnostic): vscode.CodeAction {
-		const action = new vscode.CodeAction('Learn more...', vscode.CodeActionKind.QuickFix);
-		action.command = { command: COMMAND, title: 'Learn more about emojis', tooltip: 'This will open the unicode emoji page.' };
-		action.diagnostics = [diagnostic];
-		action.isPreferred = true;
-		return action;
 	}
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() { }
+
+function getHeaderString(text: string): string {
+	return text.split('{')[0].trim() + ';';
+}
+function getSourceString(text: string, className: string): string {
+	if (className === '') {
+		return '';
+	}
+	// let allArray = text.split('')
+	let allArray = text.split(/[\r\n]+/);
+	let startLine = allArray[0];
+	let startArray = startLine.split('(');
+	let functionArray = startArray[0].split(' ');
+	// let functionName = functionArray[functionArray.length - 1];
+	// functionName = className + "::" + functionName;
+
+
+	let tmptext = '';
+	for (let index = 0; index < functionArray.length; index++) {
+		const str = functionArray[index];
+		if (index === functionArray.length - 1) {
+			tmptext += className + "::" + str;
+			continue;
+		}
+		tmptext += str + ' ';
+	}
+	console.log(tmptext);
+
+	for (let i = 0; i < startArray.length; i++) {
+		const str = startArray[i];
+		if (i === 0) {
+			continue;
+		}
+		tmptext += '(' + str;
+	}
+	for (let ii = 0; ii < allArray.length; ii++) {
+		const srt = allArray[ii];
+		if (ii === 0) {
+			continue;
+		}
+		tmptext += '\r\n' + srt;
+	}
+	return tmptext;
+	return '';
+}
+function getClassName(docuemnt: vscode.TextDocument, range: vscode.Range): string {
+	let currentRange = range;
+	let tmptext = docuemnt.getText(currentRange);
+	while (!tmptext.includes('class ')) {
+		if (currentRange.start.line - 1 < 0) {
+			return '';
+		}
+
+		// let text = docuemnt.getText(currentRange);
+		currentRange = docuemnt.lineAt(currentRange.start.line - 1).range;
+		tmptext = docuemnt.getText(currentRange);
+		console.log(tmptext);
+	}
+
+	if (tmptext.includes('class ')) {
+		let cn = tmptext.split(':')[0].trim().split(' ');
+		console.log(cn.length);
+		let className = cn[cn.length - 1];
+		console.log(className);
+		return className;
+
+	}
+	return '';
+}
+

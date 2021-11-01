@@ -3,6 +3,7 @@
 	"displayName": "cpp-quick-fix",
 	"description": "cpp quick fix",
 	"version": "0.0.1",
+	"publisher":"JinLixian",
 	"engines": {
 		"vscode": "^1.61.0"
 	},
@@ -10,8 +11,6 @@
 		"Other"
 	],
 	"activationEvents": [
-        "onCommand:cpp-quick-fix.helloWorld",
-		"onLanguage:markdown",
 		"onLanguage:cpp"
 
 	],
