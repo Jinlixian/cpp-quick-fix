@@ -1,7 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-// import { subscribeToDocumentChanges, EMOJI_MENTION } from './diagnostics';
+import { Uri } from 'vscode';
+import { subscribeToDocumentChanges, EMOJI_MENTION } from './diagnostics';
 
 const COMMAND = 'cpp-quick-fix.command';
 
@@ -9,10 +10,10 @@ const COMMAND = 'cpp-quick-fix.command';
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	context.subscriptions.push(
-		vscode.languages.registerCodeActionsProvider('markdown', new Emojizer(), {
-			providedCodeActionKinds: Emojizer.providedCodeActionKinds
-		}));
+	// context.subscriptions.push(
+	// 	vscode.languages.registerCodeActionsProvider('markdown', new Emojizer(), {
+	// 		providedCodeActionKinds: Emojizer.providedCodeActionKinds
+	// 	}));
 
 	context.subscriptions.push(
 		vscode.languages.registerCodeActionsProvider('cpp', new CppQuickFix(), {
@@ -33,10 +34,17 @@ export function activate(context: vscode.ExtensionContext) {
 	// // );
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand(COMMAND, ()=> {
+		vscode.commands.registerCommand(COMMAND, () => {
 			// TODO 实现把头文件中的funtion移动到cpp文件中的功能
 			// vscode.env.openExternal(vscode.Uri.parse('https://unicode.org/emoji/charts-12.0/full-emoji-list.html'));
 			// vscode.env.appName;
+
+			// let uri = Uri.file('/Users/jinlixian');
+			// vscode.commands.executeCommand('vscode.openFolder', uri);
+
+			vscode.commands.executeCommand('editor.action.marker.nextInFiles').then(result => {
+				console.log('命令结果', result);
+			});
 			vscode.window.showInformationMessage('TODO fix ' + COMMAND + '!');
 		})
 	);
@@ -52,6 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let disposable = vscode.commands.registerCommand('cpp-quick-fix.helloWorld', () => {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
+
 		vscode.window.showInformationMessage('Hello World from cpp-quick-fix!');
 	});
 
@@ -70,13 +79,22 @@ export class CppQuickFix implements vscode.CodeActionProvider {
 	provideCodeActions(document: vscode.TextDocument, range: vscode.Range | vscode.Selection, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
 		// throw new Error('Method not implemented.');
 
+		// vscode.commands.getCommands().then(allCommands => {
+		// 	console.log('所有命令：', allCommands);
+		// });
+
+		// let uri = Uri.file('/some/path/to/folder');
+		// commands.executeCommand('vscode.openFolder', uri).then(sucess => {
+		// 	console.log(success);
+		// }
+
 		if (!this.isCppFunctionInH(document, range)) {
 			return;
 		}
 
 		// FIXME get base name
-		const fix = new vscode.CodeAction(`Move Definition to` + document.fileName +`.cpp`, vscode.CodeActionKind.QuickFix);
-		fix.command = { command: COMMAND, title: 'Move definition to cpp'};
+		const fix = new vscode.CodeAction(`Move Definition to` + document.fileName + `.cpp`, vscode.CodeActionKind.QuickFix);
+		fix.command = { command: COMMAND, title: 'Move definition to cpp' };
 
 		const moveDefinitionToCppfile = fix;
 
