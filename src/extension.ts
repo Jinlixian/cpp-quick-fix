@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { subscribeToDocumentChanges, EMOJI_MENTION } from './diagnostics';
+// import { subscribeToDocumentChanges, EMOJI_MENTION } from './diagnostics';
 
 const COMMAND = 'cpp-quick-fix.command';
 
@@ -16,24 +16,29 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.languages.registerCodeActionsProvider('cpp', new CppQuickFix(), {
-			providedCodeActionKinds: CppQuickFix.providedCodeActionKind
+			providedCodeActionKinds: CppQuickFix.providedCodeActionKinds
 		}));
 
 
 
-	const emojiDiagnostics = vscode.languages.createDiagnosticCollection("emoji");
-	context.subscriptions.push(emojiDiagnostics);
+	// const emojiDiagnostics = vscode.languages.createDiagnosticCollection("emoji");
+	// context.subscriptions.push(emojiDiagnostics);
 
-	subscribeToDocumentChanges(context, emojiDiagnostics);
+	// subscribeToDocumentChanges(context, emojiDiagnostics);
 
-	// context.subscriptions.push(
-	// 	vscode.languages.registerCodeActionsProvider('markdown', new Emojinfo(), {
-	// 		providedCodeActionKinds: Emojinfo.providedCodeActionKinds
-	// 	})
-	// );
+	// // context.subscriptions.push(
+	// // 	vscode.languages.registerCodeActionsProvider('markdown', new Emojinfo(), {
+	// // 		providedCodeActionKinds: Emojinfo.providedCodeActionKinds
+	// // 	})
+	// // );
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand(COMMAND, () => vscode.env.openExternal(vscode.Uri.parse('https://unicode.org/emoji/charts-12.0/full-emoji-list.html')))
+		vscode.commands.registerCommand(COMMAND, ()=> {
+			// TODO 实现把头文件中的funtion移动到cpp文件中的功能
+			// vscode.env.openExternal(vscode.Uri.parse('https://unicode.org/emoji/charts-12.0/full-emoji-list.html'));
+			// vscode.env.appName;
+			vscode.window.showInformationMessage('TODO fix ' + COMMAND + '!');
+		})
 	);
 
 
@@ -61,8 +66,46 @@ export class CppQuickFix implements vscode.CodeActionProvider {
 	public static readonly providedCodeActionKinds = [
 		vscode.CodeActionKind.QuickFix
 	];
+
 	provideCodeActions(document: vscode.TextDocument, range: vscode.Range | vscode.Selection, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
-		throw new Error('Method not implemented.');
+		// throw new Error('Method not implemented.');
+
+		if (!this.isCppFunctionInH(document, range)) {
+			return;
+		}
+
+		// FIXME get base name
+		const fix = new vscode.CodeAction(`Move Definition to` + document.fileName +`.cpp`, vscode.CodeActionKind.QuickFix);
+		fix.command = { command: COMMAND, title: 'Move definition to cpp'};
+
+		const moveDefinitionToCppfile = fix;
+
+
+		return [
+			moveDefinitionToCppfile
+		];
+	}
+
+
+	// TODO: 判断是不是头文件中的function。
+	private isCppFunctionInH(document: vscode.TextDocument, range: vscode.Range) {
+		// const start = range.start;
+		// const line = document.lineAt(start.line);
+		// return line.text[start.character] === ':' && line.text[start.character + 1] === ')';
+		return true;
+	}
+
+	private createFix(document: vscode.TextDocument, range: vscode.Range, emoji: string): vscode.CodeAction {
+		const fix = new vscode.CodeAction(`Convert to ${emoji}`, vscode.CodeActionKind.QuickFix);
+		fix.edit = new vscode.WorkspaceEdit();
+		fix.edit.replace(document.uri, new vscode.Range(range.start, range.start.translate(0, 2)), emoji);
+		return fix;
+	}
+
+	private createCommand(): vscode.CodeAction {
+		const action = new vscode.CodeAction('Learn more...', vscode.CodeActionKind.Empty);
+		action.command = { command: COMMAND, title: 'Learn more about emojis', tooltip: 'This will open the unicode emoji page.' };
+		return action;
 	}
 
 }
